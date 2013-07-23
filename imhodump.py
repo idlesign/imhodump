@@ -63,12 +63,17 @@ def get_rates(page_url, recursive=False):
         except IndexError:
             print('    ** Без названия на языке оригинала')
             title_en = None
+            
+        try:
+            year = info.text.strip().split(',')[-1].strip().split(' ')[0].strip()
+        except AttributeError:
+            year = None
 
         item_data = {
             'title_ru': title_ru,
             'title_en': title_en,
             'rate': (rate_percent / 10),
-            'year': info.text.strip().split(',')[-1].strip().split(' ')[0].strip(),
+            'year': year,
             'date_rated': normalize_date(date_rated),
             'date_watched': normalize_date(date_watched),
             'details_url': details_url

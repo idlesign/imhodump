@@ -91,7 +91,11 @@ def get_rates(page_url, recursive=False):
 if __name__ == '__main__':
     with open(OUTPUT_FILENAME, 'wb') as f:
         f.write('[')
-        for line in get_rates(URL_RATES_ALL, True):
-            f.write(dumps(line))
-            f.write(',')
-        f.write(']')
+        try:
+            for line in get_rates(URL_RATES_ALL, True):
+                f.write(dumps(line))
+                f.write(',')
+        except Exception, e:
+            raise e
+        finally:
+            f.write(']')

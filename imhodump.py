@@ -95,7 +95,5 @@ if __name__ == '__main__':
             for line in get_rates(URL_RATES_ALL, True):
                 f.write(dumps(line))
                 f.write(',')
-        except Exception, e:
-            raise e
         finally:
             f.write(']')

@@ -11,12 +11,14 @@ URL_RATES_ALL = 'http://idle.imhonet.ru/content/films/rates/all/'
 OUTPUT_FILENAME = 'imho_rates.json'
 
 
-VERSION = (0, 1, 0)
+VERSION = (0, 1, 1)
 RE_DATE_STR = re.compile(r'(?P<day>\d{1,2})\s(?P<month>\S+)(\s(?P<year>\d{4}))?')
 MONTHS = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря']
 
 
 def normalize_date(date_str):
+    if date_str is None:
+        return None
     real_date = date_str.split(',')[-1].strip()
     match = re.search(RE_DATE_STR, real_date)
     date_dict = match.groupdict()
@@ -51,7 +53,7 @@ def get_rates(page_url, recursive=False):
         try:
             dates_data = rate_box.xpath("div[@class='content']/div[@class='widget-compare']/div[@class='info list-rates-info']")[0].text.split('<br>')
         except IndexError:
-            date_watched = date_rated = u'1 января 1970'
+            date_watched = date_rated = None
         else:
             date_rated = dates_data[0]
             date_watched = date_rated

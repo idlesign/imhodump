@@ -1,14 +1,14 @@
 #-*- coding: utf-8 -*-
+from json import dumps
 import requests
 import re
-import pickle
 
 from lxml import etree
 from datetime import date
 
 
 URL_RATES_ALL = 'http://idle.imhonet.ru/content/films/rates/all/'
-OUTPUT_FILENAME = 'imho_rates.pkl'
+OUTPUT_FILENAME = 'imho_rates.json'
 
 
 VERSION = (0, 1, 0)
@@ -28,8 +28,6 @@ def normalize_date(date_str):
 
 
 def get_rates(page_url, recursive=False):
-    rates = []
-
     print('\nСтраница %s ...' % page_url)
     
     req = requests.get(page_url)
@@ -50,20 +48,25 @@ def get_rates(page_url, recursive=False):
         rate_data = rate_box.xpath("div[@class='content']/div[@class='widget-compare']/div[@class='other']/span/div[@class='rate-table ']/span/span/i")[0] 
         rate_percent = int(rate_data.get('style').split(' ')[1].strip('%'))
         details_url = heading.get('href').strip()
-        dates_data = rate_box.xpath("div[@class='content']/div[@class='widget-compare']/div[@class='info list-rates-info']")[0].text.split('<br>')
-        date_rated = dates_data[0]
-        date_watched = date_rated
-        if len(dates_data) == 2:
-            date_watched = dates_data[1]
+        try:
+            dates_data = rate_box.xpath("div[@class='content']/div[@class='widget-compare']/div[@class='info list-rates-info']")[0].text.split('<br>')
+        except IndexError:
+            date_watched = date_rated = u'1 января 1970'
+        else:
+            date_rated = dates_data[0]
+            date_watched = date_rated
+            if len(dates_data) == 2:
+                date_watched = dates_data[1]
         
         req_details = requests.get(details_url)
         html_details = etree.HTML(req_details.text)
+
         try:
-            title_en = html_details.xpath("//div[@class='title-english']")[0].text.strip().encode('utf-8')
-        except IndexError:
+            title_en = html_details.xpath("//div[@class='m-elementprimary-language']")[0].text.strip().encode('utf-8')
+        except (IndexError, AttributeError):
             print('    ** Без названия на языке оригинала')
             title_en = None
-            
+
         try:
             year = info.text.strip().split(',')[-1].strip().split(' ')[0].strip()
         except AttributeError:
@@ -78,14 +81,19 @@ def get_rates(page_url, recursive=False):
             'date_watched': normalize_date(date_watched),
             'details_url': details_url
         }
-        rates.append(item_data)
+        yield item_data
 
     if recursive and next_page_url is not None:
-        rates.extend(get_rates(next_page_url, recursive))
-
-    return rates
+        for line in get_rates(next_page_url, recursive):
+            yield line
 
 
 if __name__ == '__main__':
-    with open(OUTPUT_FILENAME, 'w') as f:
-        pickle.dump(get_rates(URL_RATES_ALL, True), f)
+    with open(OUTPUT_FILENAME, 'wb') as f:
+        f.write('[')
+        try:
+            for line in get_rates(URL_RATES_ALL, True):
+                f.write(dumps(line))
+                f.write(',')
+        finally:
+            f.write(']')

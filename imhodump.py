@@ -1,101 +1,102 @@
 #-*- coding: utf-8 -*-
-from json import dumps
 import requests
-import re
+import logging
+import os
 
 from lxml import etree
-from datetime import date
+from json import dumps
 
 
-URL_RATES_ALL = 'http://idle.imhonet.ru/content/films/rates/all/'
-OUTPUT_FILENAME = 'imho_rates.json'
+logging.basicConfig()
+logger = logging.getLogger(os.path.basename(__file__))
+logger.setLevel(logging.INFO)
 
 
-VERSION = (0, 1, 1)
-RE_DATE_STR = re.compile(r'(?P<day>\d{1,2})\s(?P<month>\S+)(\s(?P<year>\d{4}))?')
-MONTHS = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря']
+USERNAME = 'idle'
 
 
-def normalize_date(date_str):
-    if date_str is None:
-        return None
-    real_date = date_str.split(',')[-1].strip()
-    match = re.search(RE_DATE_STR, real_date)
-    date_dict = match.groupdict()
-    if date_dict['year'] is None:
-        date_dict['year'] = date.today().year
-    date_dict['day'] = date_dict['day'].zfill(2)
-    date_dict['month'] = str(MONTHS.index(date_dict['month'].encode('utf-8'))).zfill(2)
-    return '%s-%s-%s' % (date_dict['year'], date_dict['month'], date_dict['day'])
+VERSION = (0, 2, 0)
+
+URL_RATES_TPL = 'http://%s.imhonet.ru/content/films/rates/%s/'
+OUTPUT_FILENAME = 'imho_rates_%s.json' % USERNAME
 
 
-def get_rates(page_url, recursive=False):
-    print('\nСтраница %s ...' % page_url)
-    
-    req = requests.get(page_url)
-    html = etree.HTML(req.text)
-    try:
-        next_page_url = html.xpath("//div[@class='pager']/a[@class='rarr']")[0].get('href')
-    except IndexError:
-        next_page_url = None
-
-    rate_boxes = html.xpath("//li[@class='element-type clearfix']")
-
+def get_rates(html):
+    rate_boxes = html.xpath("//div[@class='m-inlineitemslist-describe']")
     for rate_box in rate_boxes:
-        heading = rate_box.xpath("div[@class='content']/div[@class='title']/a")[0]
-        title_ru = heading.text.strip().encode('utf-8')
-        print('Обработка %s ...' % title_ru)
-
-        info = rate_box.xpath("div[@class='content']/div[@class='info']/div[@class='country']")[0]
-        rate_data = rate_box.xpath("div[@class='content']/div[@class='widget-compare']/div[@class='other']/span/div[@class='rate-table ']/span/span/i")[0] 
-        rate_percent = int(rate_data.get('style').split(' ')[1].strip('%'))
+        heading = rate_box.xpath("div[@class='m-inlineitemslist-describe-h2']/a")[0]
+        title_ru = heading.text.strip()
         details_url = heading.get('href').strip()
-        try:
-            dates_data = rate_box.xpath("div[@class='content']/div[@class='widget-compare']/div[@class='info list-rates-info']")[0].text.split('<br>')
-        except IndexError:
-            date_watched = date_rated = None
-        else:
-            date_rated = dates_data[0]
-            date_watched = date_rated
-            if len(dates_data) == 2:
-                date_watched = dates_data[1]
-        
+        logger.info('Обрабатываем "%s" ...' % title_ru)
+
+        info = rate_box.xpath("div[@class='m-inlineitemslist-describe-gray']")[0].text.strip()
+
         req_details = requests.get(details_url)
         html_details = etree.HTML(req_details.text)
 
         try:
-            title_en = html_details.xpath("//div[@class='m-elementprimary-language']")[0].text.strip().encode('utf-8')
+            title_orig = html_details.xpath("//div[@class='m-elementprimary-language']")[0].text.strip()
         except (IndexError, AttributeError):
-            print('    ** Без названия на языке оригинала')
-            title_en = None
+            logger.debug('** Название на языке оригинала не заявлено, наверное наше кино')
+            title_orig = None
+
+        logger.debug('Оригинальное название: %s' % title_orig)
 
         try:
-            year = info.text.strip().split(',')[-1].strip().split(' ')[0].strip()
+            year = info.split('<br>')[0].strip().split(',')[-1].strip().split(' ')[0].strip()
         except AttributeError:
             year = None
 
+        logger.debug('Год: %s' % year)
+
+        if year is not None:
+            title_ru = title_ru.replace('(%s)' % year, '').strip()
+
         item_data = {
             'title_ru': title_ru,
-            'title_en': title_en,
-            'rate': (rate_percent / 10),
+            'title_orig': title_orig,
+            'rating': rating,
             'year': year,
-            'date_rated': normalize_date(date_rated),
-            'date_watched': normalize_date(date_watched),
             'details_url': details_url
         }
+
         yield item_data
 
+
+def process_url(page_url, rating, recursive=False):
+
+    logger.info('Обрабатывается страница %s ...' % page_url)
+    logger.debug('Рейтинг: %s' % rating)
+
+    req = requests.get(page_url)
+    text = req.text.replace('<!--noindex-->', ''). replace('<!--/noindex-->', '')
+    html = etree.HTML(text)
+
+    try:
+        next_page_url = html.xpath("//div[@class='m-pagination']/a")[-1].get('href')
+    except IndexError:
+        next_page_url = None
+
+    if next_page_url==page_url:
+        next_page_url = None
+
+    logger.info('Следующая страница: %s' % next_page_url)
+
+    yield from get_rates(html)
+
     if recursive and next_page_url is not None:
-        for line in get_rates(next_page_url, recursive):
-            yield line
+        yield from process_url(next_page_url, rating, recursive)
 
 
 if __name__ == '__main__':
-    with open(OUTPUT_FILENAME, 'wb') as f:
+
+    logger.info('Собираем оценки пользователя %s в файл %s' % (USERNAME, OUTPUT_FILENAME))
+
+    with open(OUTPUT_FILENAME, 'w') as f:
         f.write('[')
         try:
-            for line in get_rates(URL_RATES_ALL, True):
-                f.write(dumps(line))
-                f.write(',')
+            for rating in range(1, 10):
+                for rates_data in process_url(URL_RATES_TPL % (USERNAME, rating), rating, True):
+                    f.write('%s,' % dumps(rates_data, indent=4))
         finally:
-            f.write(']')
+            f.write('{}]')

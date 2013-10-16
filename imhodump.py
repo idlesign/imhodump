@@ -2,9 +2,11 @@
 import requests
 import logging
 import os
+import shutil
+import datetime
 
 from lxml import etree
-from json import dumps
+from json import dumps, loads
 
 
 logging.basicConfig()
@@ -21,7 +23,7 @@ URL_RATES_TPL = 'http://%s.imhonet.ru/content/films/rates/%s/'
 OUTPUT_FILENAME = 'imho_rates_%s.json' % USERNAME
 
 
-def get_rates(html):
+def get_rates(html, rating):
     rate_boxes = html.xpath("//div[@class='m-inlineitemslist-describe']")
     for rate_box in rate_boxes:
         heading = rate_box.xpath("div[@class='m-inlineitemslist-describe-h2']/a")[0]
@@ -77,26 +79,47 @@ def process_url(page_url, rating, recursive=False):
     except IndexError:
         next_page_url = None
 
-    if next_page_url==page_url:
+    if next_page_url == page_url:
         next_page_url = None
 
     logger.info('Следующая страница: %s' % next_page_url)
 
-    yield from get_rates(html)
+    yield from get_rates(html, rating)
 
     if recursive and next_page_url is not None:
         yield from process_url(next_page_url, rating, recursive)
 
 
-if __name__ == '__main__':
+def dump_to_file(filename, existing_items=None):
+    logger.info('Собираем оценки пользователя %s в файл %s' % (USERNAME, filename))
 
-    logger.info('Собираем оценки пользователя %s в файл %s' % (USERNAME, OUTPUT_FILENAME))
-
-    with open(OUTPUT_FILENAME, 'w') as f:
+    with open(filename, 'w') as f:
         f.write('[')
         try:
+            if existing_items:
+                f.write('%s,' % dumps(list(existing_items.values()), indent=4).strip('[]'))
             for rating in range(1, 10):
-                for rates_data in process_url(URL_RATES_TPL % (USERNAME, rating), rating, True):
-                    f.write('%s,' % dumps(rates_data, indent=4))
+                for item_data in process_url(URL_RATES_TPL % (USERNAME, rating), rating, True):
+                    if item_data['details_url'] not in existing_items:
+                        f.write('%s,' % dumps(item_data, indent=4))
         finally:
             f.write('{}]')
+
+
+def load_from_file(filename):
+    result = {}
+    if os.path.exists(filename):
+        logger.info('Загружаем ранее собранные оценки пользователя %s из файла %s' % (USERNAME, filename))
+        with open(filename, 'r') as f:
+            data = f.read()
+        result = {entry['details_url']: entry for entry in loads(data) if entry}
+
+        target_filename = '%s.bak%s' % (filename, datetime.datetime.isoformat(datetime.datetime.now()))
+        logger.info('Делаем резервную копию файла с оценками: %s' % target_filename)
+        shutil.copy(filename, target_filename)
+    return result
+
+
+if __name__ == '__main__':
+    existing_items = load_from_file(OUTPUT_FILENAME)
+    dump_to_file(OUTPUT_FILENAME, existing_items=existing_items)

@@ -21,6 +21,7 @@ VERSION = (0, 2, 0)
 
 URL_RATES_TPL = 'http://%s.imhonet.ru/content/films/rates/%s/'
 OUTPUT_FILENAME = 'imho_rates_%s.json' % USERNAME
+START_FROM_RATING = 1
 
 
 def get_rates(html, rating):
@@ -90,7 +91,7 @@ def process_url(page_url, rating, recursive=False):
         yield from process_url(next_page_url, rating, recursive)
 
 
-def dump_to_file(filename, existing_items=None):
+def dump_to_file(filename, existing_items=None, start_from_rating=1):
     logger.info('Собираем оценки пользователя %s в файл %s' % (USERNAME, filename))
 
     with open(filename, 'w') as f:
@@ -98,7 +99,7 @@ def dump_to_file(filename, existing_items=None):
         try:
             if existing_items:
                 f.write('%s,' % dumps(list(existing_items.values()), indent=4).strip('[]'))
-            for rating in range(1, 10):
+            for rating in range(start_from_rating, 10):
                 for item_data in process_url(URL_RATES_TPL % (USERNAME, rating), rating, True):
                     if item_data['details_url'] not in existing_items:
                         f.write('%s,' % dumps(item_data, indent=4))
@@ -113,13 +114,49 @@ def load_from_file(filename):
         with open(filename, 'r') as f:
             data = f.read()
         result = {entry['details_url']: entry for entry in loads(data) if entry}
-
-        target_filename = '%s.bak%s' % (filename, datetime.datetime.isoformat(datetime.datetime.now()))
-        logger.info('Делаем резервную копию файла с оценками: %s' % target_filename)
-        shutil.copy(filename, target_filename)
     return result
+
+
+def backup_json(filename):
+    target_filename = '%s.bak%s' % (filename, datetime.datetime.isoformat(datetime.datetime.now()))
+    logger.info('Делаем резервную копию файла с оценками: %s' % target_filename)
+    shutil.copy(filename, target_filename)
+
+
+def json_to_imdb_csv(input_filename):
+    target_filename = '%s.csv' % os.path.splitext(os.path.basename(input_filename))[0]
+    logger.info('Экспортируем оценки из файла %s в файл %s' % (input_filename, target_filename))
+    items = load_from_file(input_filename)
+    out_lines = [
+        '"position","const","created","modified","description","Title","Title type","Directors","You rated","IMDb Rating","Runtime (mins)","Year","Genres","Num. Votes","Release Date (month/day/year)","URL"',
+    ]
+    for position, item in enumerate(items.values(), 1):
+        line = '"%(position)s","%(id)s","%(created)s","%(modified)s","%(description)s","%(title)s","%(type)s","%(director)s","%(rating)s","%(rating_imdb)s","%(runtime)s","%(year)s","%(genres)s","%(votes)s","%(release_date)s","%(url)s"' % {
+            'position': position,
+            'id': 'tt0000000',
+            'created': 'Wed Oct 16 00:00:00 2013',
+            'modified': '',
+            'description': '',
+            'title': item['title_ru'].replace('"', '""'),
+            'type': '',
+            'director': '',
+            'rating': item['rating'],
+            'rating_imdb': '0.0',
+            'runtime': '0',
+            'year': item['year'],
+            'genres': '',
+            'votes': '0',
+            'release_date': '',
+            'url': item['details_url']
+        }
+        out_lines.append(line)
+    with open(target_filename, 'w') as f:
+        f.write('\n'.join(out_lines))
 
 
 if __name__ == '__main__':
     existing_items = load_from_file(OUTPUT_FILENAME)
-    dump_to_file(OUTPUT_FILENAME, existing_items=existing_items)
+    if existing_items:
+        backup_json(OUTPUT_FILENAME)
+    dump_to_file(OUTPUT_FILENAME, existing_items=existing_items, start_from_rating=START_FROM_RATING)
+    json_to_imdb_csv(OUTPUT_FILENAME)

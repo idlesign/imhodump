@@ -133,7 +133,7 @@ def json_to_imdb_csv(input_filename):
     for position, item in enumerate(items.values(), 1):
         line = '"%(position)s","%(id)s","%(created)s","%(modified)s","%(description)s","%(title)s","%(type)s","%(director)s","%(rating)s","%(rating_imdb)s","%(runtime)s","%(year)s","%(genres)s","%(votes)s","%(release_date)s","%(url)s"' % {
             'position': position,
-            'id': 'tt0000000',
+            'id': 'tt0000000',  # По этому идентификатору КиноПоиск производит связь. А у нас он фиктивный %(
             'created': 'Wed Oct 16 00:00:00 2013',
             'modified': '',
             'description': '',

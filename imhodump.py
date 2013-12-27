@@ -16,11 +16,16 @@ logger.setLevel(logging.INFO)
 
 USERNAME = 'idle'
 
+SUBJECT = 'films'
+#SUBJECT = 'books'
+#SUBJECT = 'games'
+#SUBJECT = 'serials'
 
-VERSION = (0, 2, 0)
 
-URL_RATES_TPL = 'http://%s.imhonet.ru/content/films/rates/%s/'
-OUTPUT_FILENAME = 'imho_rates_%s.json' % USERNAME
+VERSION = (0, 3, 0)
+
+URL_RATES_TPL = 'http://%s.imhonet.ru/content/%s/rates/%s/'
+OUTPUT_FILENAME = 'imho_rates_%s_%s.json' % (SUBJECT, USERNAME)
 START_FROM_RATING = 1
 
 
@@ -100,7 +105,7 @@ def dump_to_file(filename, existing_items=None, start_from_rating=1):
             if existing_items:
                 f.write('%s,' % dumps(list(existing_items.values()), indent=4).strip('[]'))
             for rating in range(start_from_rating, 10):
-                for item_data in process_url(URL_RATES_TPL % (USERNAME, rating), rating, True):
+                for item_data in process_url(URL_RATES_TPL % (USERNAME, SUBJECT, rating), rating, True):
                     if item_data['details_url'] not in existing_items:
                         f.write('%s,' % dumps(item_data, indent=4))
         finally:

@@ -8,8 +8,9 @@ import argparse
 
 from lxml import etree
 from json import dumps, loads
-from urllib.parse import quote
 from math import ceil
+from collections import OrderedDict
+from urllib.parse import quote
 
 
 logging.basicConfig()
@@ -129,12 +130,12 @@ class ImhoDumper():
                 f.write('{}]')
 
     def load_from_file(self, filename):
-        result = {}
+        result = OrderedDict()
         if os.path.exists(filename):
             logger.info('Загружаем ранее собранные оценки пользователя %s из файла %s' % (self.username, filename))
             with open(filename, 'r') as f:
                 data = f.read()
-            result = {entry['details_url']: entry for entry in loads(data) if entry}
+            result = OrderedDict([(entry['details_url'], entry) for entry in loads(data, object_pairs_hook=OrderedDict) if entry])
         return result
 
     def make_html(self, filename):

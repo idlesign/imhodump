@@ -59,7 +59,11 @@ class ImhoDumper():
 
             # info = rate_box.xpath("div[@class='m-inlineitemslist-describe-gray']")[0].text.strip()          
             block_with_year = rate_box.xpath("div[@class='m-inlineitemslist-describe-gray']/span")[1]
-            year = block_with_year.get('data-content')                  
+            year = block_with_year.get('data-content')
+
+            block_before_year = rate_box.xpath("div[@class='m-inlineitemslist-describe-gray']/span")[0]
+            author_or_country = block_before_year.get('data-content')
+            author_or_country = author_or_country.rstrip().rstrip(',')
 
             req_details = requests.get(details_url)
             html_details = etree.HTML(req_details.text)
@@ -90,6 +94,12 @@ class ImhoDumper():
                 'year': year,
                 'details_url': details_url
             }
+
+            if self.subject == 'films':
+                item_data['country'] = author_or_country
+            elif self.subject == 'books':
+                item_data['author'] = author_or_country
+
 
             yield item_data
 

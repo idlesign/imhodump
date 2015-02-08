@@ -107,6 +107,7 @@ class ImhoDumper():
         if next_page_url == page_url:
             next_page_url = None
 
+        next_page_url = None
         logger.info('Следующая страница: %s' % next_page_url)
 
         yield from self.get_rates(html, rating)
@@ -122,7 +123,7 @@ class ImhoDumper():
             try:
                 if existing_items:
                     f.write('%s,' % dumps(list(existing_items.values()), indent=4).strip('[]'))
-                for rating in range(start_from_rating, 10):
+                for rating in range(start_from_rating, 11):
                     for item_data in self.process_url(self.URL_RATES_TPL % (self.username, self.subject, rating), rating, True):
                         if item_data['details_url'] not in existing_items:
                             f.write('%s,' % dumps(item_data, indent=4))

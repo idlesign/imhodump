@@ -57,7 +57,9 @@ class ImhoDumper():
             details_url = heading.get('href').strip()
             logger.info('Обрабатываем "%s" ...' % title_ru)
 
-            info = rate_box.xpath("div[@class='m-inlineitemslist-describe-gray']")[0].text.strip()
+            # info = rate_box.xpath("div[@class='m-inlineitemslist-describe-gray']")[0].text.strip()          
+            block_with_year = rate_box.xpath("div[@class='m-inlineitemslist-describe-gray']/span")[1]
+            year = block_with_year.get('data-content')                  
 
             req_details = requests.get(details_url)
             html_details = etree.HTML(req_details.text)
@@ -70,10 +72,11 @@ class ImhoDumper():
 
             logger.debug('Оригинальное название: %s' % title_orig)
 
-            try:
-                year = info.split('<br>')[0].strip().split(',')[-1].strip().split(' ')[0].strip()
-            except AttributeError:
-                year = None
+            # try:
+            #     year = info.split('<br>')[0].strip().split(',')[-1].strip().split(' ')[0].strip()                
+            # except AttributeError:
+            #     year = None
+   
 
             logger.debug('Год: %s' % year)
 
@@ -107,7 +110,6 @@ class ImhoDumper():
         if next_page_url == page_url:
             next_page_url = None
 
-        next_page_url = None
         logger.info('Следующая страница: %s' % next_page_url)
 
         yield from self.get_rates(html, rating)

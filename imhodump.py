@@ -57,7 +57,13 @@ class ImhoDumper():
             details_url = heading.get('href').strip()
             logger.info('Обрабатываем "%s" ...' % title_ru)
 
-            info = rate_box.xpath("div[@class='m-inlineitemslist-describe-gray']")[0].text.strip()
+            # info = rate_box.xpath("div[@class='m-inlineitemslist-describe-gray']")[0].text.strip()          
+            block_with_year = rate_box.xpath("div[@class='m-inlineitemslist-describe-gray']/span")[1]
+            year = block_with_year.get('data-content')
+
+            block_before_year = rate_box.xpath("div[@class='m-inlineitemslist-describe-gray']/span")[0]
+            author_or_country = block_before_year.get('data-content')
+            author_or_country = author_or_country.rstrip().rstrip(',')
 
             req_details = requests.get(details_url)
             html_details = etree.HTML(req_details.text)
@@ -70,10 +76,11 @@ class ImhoDumper():
 
             logger.debug('Оригинальное название: %s' % title_orig)
 
-            try:
-                year = info.split('<br>')[0].strip().split(',')[-1].strip().split(' ')[0].strip()
-            except AttributeError:
-                year = None
+            # try:
+            #     year = info.split('<br>')[0].strip().split(',')[-1].strip().split(' ')[0].strip()                
+            # except AttributeError:
+            #     year = None
+   
 
             logger.debug('Год: %s' % year)
 
@@ -87,6 +94,12 @@ class ImhoDumper():
                 'year': year,
                 'details_url': details_url
             }
+
+            if self.subject == 'films':
+                item_data['country'] = author_or_country
+            elif self.subject == 'books':
+                item_data['author'] = author_or_country
+
 
             yield item_data
 
@@ -122,7 +135,7 @@ class ImhoDumper():
             try:
                 if existing_items:
                     f.write('%s,' % dumps(list(existing_items.values()), indent=4).strip('[]'))
-                for rating in range(start_from_rating, 10):
+                for rating in range(start_from_rating, 11):
                     for item_data in self.process_url(self.URL_RATES_TPL % (self.username, self.subject, rating), rating, True):
                         if item_data['details_url'] not in existing_items:
                             f.write('%s,' % dumps(item_data, indent=4))

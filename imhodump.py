@@ -5,6 +5,7 @@ import os
 import shutil
 import datetime
 import argparse
+import traceback
 
 from lxml import etree
 from json import dumps, loads
@@ -63,9 +64,11 @@ class ImhoDumper():
 
             try:
                 title_orig = html_details.xpath("//div[@class='m-elementprimary-language']")[0].text.strip()
+                author = html_details.xpath("//div[@class='underline m-value']")[0].text.strip()
             except (IndexError, AttributeError):
                 logger.debug('** Название на языке оригинала не заявлено, наверное наше кино')
                 title_orig = None
+                author = None
 
             logger.debug('Оригинальное название: %s' % title_orig)
             logger.debug('Год: %s' % year)
@@ -84,8 +87,7 @@ class ImhoDumper():
             if self.subject == 'films':
                 item_data['country'] = ','.join(item['countries'])
             elif self.subject == 'books':
-                # TODO: get book author
-                item_data['author'] = None
+                item_data['author'] = author
 
             yield item_data
 
@@ -101,6 +103,9 @@ class ImhoDumper():
         try:
             json = req.json()
         except:
+            return
+
+        if len(json) == 0 or len(json['user_rates']['content_rated']) == 0:
             return
 
         next_page_url = self.format_url(self.user_id, self.subject, rating, page + 1)
@@ -128,6 +133,7 @@ class ImhoDumper():
                             f.flush()
             except BaseException as e:
                 logger.info("Failed: %s" % e)
+                logger.info(traceback.format_exc())
             finally:
                 f.write('{}]')
 

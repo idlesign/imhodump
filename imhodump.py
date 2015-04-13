@@ -64,10 +64,14 @@ class ImhoDumper():
 
             try:
                 title_orig = html_details.xpath("//div[@class='m-elementprimary-language']")[0].text.strip()
-                author = html_details.xpath("//div[@class='underline m-value']")[0].text.strip()
             except (IndexError, AttributeError):
                 logger.debug('** Название на языке оригинала не заявлено, наверное наше кино')
                 title_orig = None
+
+            try:
+                author = html_details.xpath("//a[@class='underline m-value']/span")[0].text.strip()
+            except:
+                logger.info('** Автор не найден')
                 author = None
 
             logger.debug('Оригинальное название: %s' % title_orig)

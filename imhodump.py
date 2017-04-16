@@ -54,7 +54,11 @@ class ImhoDumper:
         items = html.xpath('//div[@class="m-rate-list-item"]')
 
         def get_meta_content(name):
-            return html_details.xpath('.//meta[@itemprop="%s"]' % name)[0].get('content').strip()
+            try:
+                value = html_details.xpath('.//meta[@itemprop="%s"]' % name)[0].get('content').strip()
+            except IndexError:
+                value = None
+            return value
 
         for item in items:
             heading = item.xpath('.//a[@class="m-rate-item-content-header-link"]')[0].text.strip()
@@ -67,7 +71,7 @@ class ImhoDumper:
 
             html_details = html_details.xpath('//div[@class="_index_content__Nrmux layout_colContent__3D7W7"]')[0]
             year = get_meta_content('dateCreated')
-            heading = get_meta_content('name')
+            heading = get_meta_content('name') or heading
 
             try:
                 title_orig = html_details.xpath('.//div[@itemprop="alternativeHeadline"]')[0].text.strip()

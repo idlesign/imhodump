@@ -128,7 +128,7 @@ class ImhoDumper:
     def dump_to_file(self, filename, existing_items=None, start_from_rating=1):
         logger.info('Собираем оценки пользователя %s в файл %s', self.user_id, filename)
 
-        with open(filename, 'w') as f:
+        with open(filename, 'w', encoding='utf8') as f:
             f.write('[')
 
             try:
@@ -158,7 +158,7 @@ class ImhoDumper:
         if os.path.exists(filename):
             logger.info('Загружаем ранее собранные оценки пользователя %s из файла %s' % (self.user_id, filename))
 
-            with open(filename, 'r') as f:
+            with open(filename, 'r', encoding='utf8') as f:
                 data = f.read()
 
             try:
@@ -281,7 +281,7 @@ class ImhoDumper:
         target_file = '%s.html' % os.path.splitext(filename)[0]
         logger.info('Создаём html файл с оценками: %s', target_file)
 
-        with open(target_file, 'w') as f:
+        with open(target_file, 'w', encoding='utf8') as f:
             f.write(
                 html_base % {
                     'subject': self.subject,

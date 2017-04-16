@@ -1,11 +1,10 @@
-#-*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 import requests
 import logging
 import os
 import shutil
 import datetime
 import argparse
-import traceback
 
 from lxml import etree
 from json import dumps, loads
@@ -42,7 +41,7 @@ class ImhoDumper():
         SUBJECT_SERIES: [TARGET_KINOPOISK]
     }
 
-    URL_RATES_TPL = 'http://%(user_id)s.imhonet.ru/content/%(subject)s/rates/%(rating)s/?page=%(page)s'
+    URL_RATES_TPL = 'http://user.imhonet.ru/%(user_id)s/content/%(subject)s/rates/%(rating)s/?page=%(page)s'
     START_FROM_RATING = 1
 
     def __init__(self, user_id, subject):
@@ -50,31 +49,33 @@ class ImhoDumper():
         self.subject = subject
         self.output_filename = 'imho_rates_%s_%s.json' % (subject, user_id)
 
-    def get_rates(self, json, rating):
-        items = json['user_rates']['content_rated']
+    def get_rates(self, html, rating):
+        items = html.xpath('//div[@class="m-rate-list-item"]')
+
+        def get_meta_content(name):
+            return html_details.xpath('.//meta[@itemprop="%s"]' % name)[0].get('content').strip()
+
         for item in items:
-            heading = item['title']
-            details_url = item['url']
-            year = item['year']
+            heading = item.xpath('.//a[@class="m-rate-item-content-header-link"]')[0].text.strip()
+            details_url = item.xpath('.//a[@class="m-rate-item-link"]')[0].get('href').strip()
 
-            logger.info('Обрабатываем "%s" ...' % heading)
+            logger.info('Обрабатываем "%s" ...', heading)
 
-            req_details = requests.get(details_url)
-            html_details = etree.HTML(req_details.text)
+            response = requests.get(details_url)
+            html_details = etree.HTML(response.text)
+
+            html_details = html_details.xpath('//div[@class="_index_content__Nrmux layout_colContent__3D7W7"]')[0]
+            year = get_meta_content('dateCreated')
+            heading = get_meta_content('name')
 
             try:
-                title_orig = html_details.xpath("//div[@class='m-elementprimary-language']")[0].text.strip()
+                title_orig = html_details.xpath('.//div[@itemprop="alternativeHeadline"]')[0].text.strip()
+
             except (IndexError, AttributeError):
                 logger.debug('** Название на языке оригинала не заявлено, наверное наше кино')
                 title_orig = None
 
-            try:
-                author = html_details.xpath("//a[@class='underline m-value']/span")[0].text.strip()
-            except:
-                logger.info('** Автор не найден')
-                author = None
-
-            logger.debug('Оригинальное название: %s' % title_orig)
+            logger.debug('Оригинальное название: %s', title_orig)
             logger.debug('Год: %s' % year)
 
             if year is not None:
@@ -89,71 +90,81 @@ class ImhoDumper():
             }
 
             if self.subject == 'films':
-                item_data['country'] = ','.join(item['countries'])
-            elif self.subject == 'books':
-                item_data['author'] = author
+                countries = []
+
+                for country in html_details.xpath('.//meta[@itemprop="countryOfOrigin"]') or []:
+                    countries.append(country.get('content').strip())
+
+                item_data['country'] = ', '.join(countries)
 
             yield item_data
 
-    def format_url(self, user_id, subject, rating, page=1):
-        return self.URL_RATES_TPL % {'user_id': self.user_id, 'subject': self.subject, 'rating': rating, 'page': page}
+    def process_url(self, rating, page, recursive=False):
 
-    def process_url(self, page_url, rating, page, recursive=False):
+        page_url = self.URL_RATES_TPL % {
+            'user_id': self.user_id, 'subject': self.subject, 'rating': rating, 'page': page}
 
-        logger.info('Обрабатывается страница %s ...' % page_url)
-        logger.debug('Рейтинг: %s' % rating)
+        logger.info('Обрабатывается страница %s ...', page_url)
+        logger.debug('Рейтинг: %s', rating)
 
-        req = requests.get(page_url, headers={'Accept':'application/json'})
-        try:
-            json = req.json()
-        except:
-            return
+        response = requests.get(page_url)
 
-        if len(json) == 0 or len(json['user_rates']['content_rated']) == 0:
-            return
+        if response.status_code != 200:
+            return {}
 
-        next_page_url = self.format_url(self.user_id, self.subject, rating, page + 1)
+        text = response.text
+        html = etree.HTML(text)
 
-        logger.info('Следующая страница: %s' % next_page_url)
+        yield from self.get_rates(html, rating)
 
-        yield from self.get_rates(json, rating)
-
-        if recursive and next_page_url is not None:
-            yield from self.process_url(next_page_url, rating, page + 1, recursive)
+        if recursive:
+            yield from self.process_url(rating, page + 1, recursive)
 
     def dump_to_file(self, filename, existing_items=None, start_from_rating=1):
-        logger.info('Собираем оценки пользователя %s в файл %s' % (self.user_id, filename))
+        logger.info('Собираем оценки пользователя %s в файл %s', self.user_id, filename)
 
         with open(filename, 'w') as f:
             f.write('[')
+
             try:
                 if existing_items:
                     f.write('%s,' % dumps(list(existing_items.values()), indent=4).strip('[]'))
+
                 for rating in range(start_from_rating, 11):
-                    for item_data in self.process_url(self.format_url(self.user_id, self.subject, rating), rating, 1, True):
+
+                    for item_data in self.process_url(rating, 1, True):
+                        if not item_data:
+                            continue
+
                         if not existing_items or item_data['details_url'] not in existing_items:
                             line = '%s,' % dumps(item_data, indent=4)
                             f.write(line)
                             f.flush()
-            except BaseException as e:
-                logger.info("Failed: %s" % e)
-                logger.info(traceback.format_exc())
+
+            except Exception:
+                logger.error('Необработанная ошибка: %s', exc_info=True)
+
             finally:
                 f.write('{}]')
 
     def load_from_file(self, filename):
         result = OrderedDict()
+
         if os.path.exists(filename):
             logger.info('Загружаем ранее собранные оценки пользователя %s из файла %s' % (self.user_id, filename))
+
             with open(filename, 'r') as f:
-                text = f.read()
-                f.close()
+                data = f.read()
+
             try:
                 data = loads(data, object_pairs_hook=OrderedDict)
+
             except:
-                logger.info("Failed loading json")
+                logger.error('Ошибка загрузки json: %s', exc_info=True)
                 return None
+
             result = OrderedDict([(entry['details_url'], entry) for entry in data if entry])
+
         return result
 
     def make_html(self, filename):
@@ -263,13 +274,19 @@ class ImhoDumper():
             rating_rows.append(html_rating_row % record)
 
         target_file = '%s.html' % os.path.splitext(filename)[0]
-        logger.info('Создаём html файл с оценками: %s' % target_file)
+        logger.info('Создаём html файл с оценками: %s', target_file)
+
         with open(target_file, 'w') as f:
-            f.write(html_base % {'subject': self.subject, 'rates_num': len(records), 'rating_rows': '\n'.join(rating_rows)})
+            f.write(
+                html_base % {
+                    'subject': self.subject,
+                    'rates_num': len(records),
+                    'rating_rows': '\n'.join(rating_rows)
+                })
 
     def backup_json(self, filename):
         target_filename = '%s.bak%s' % (filename, datetime.datetime.isoformat(datetime.datetime.now()))
-        logger.info('Делаем резервную копию файла с оценками: %s' % target_filename)
+        logger.info('Делаем резервную копию файла с оценками: %s', target_filename)
         shutil.copy(filename, target_filename)
 
     def dump(self):
@@ -285,12 +302,21 @@ if __name__ == '__main__':
     args_parser = argparse.ArgumentParser()
     args_parser.add_argument('user_id', help='ID пользователя imhonet')
     args_parser.add_argument('subject', help='Категория: %s' % ', '.join([s for s in ImhoDumper.SUBJECTS.keys()]))
-    args_parser.add_argument('--html_only', help='Указывает, что требуется только экспорт уже имеющегося файла с оценками в html', action='store_true')
+    args_parser.add_argument(
+        '--html_only',
+        help='Указывает, что требуется только экспорт уже имеющегося файла с оценками в html', action='store_true')
 
     parsed = args_parser.parse_args()
 
+    if parsed.subject != 'films':
+        logger.warning(
+            'Разбор проверен 2017-04-16 для раздела Фильмы. '
+            'Разбор данных из других разделов может не работать.')
+
     dumper = ImhoDumper(parsed.user_id, parsed.subject)
+
     if parsed.html_only:
         dumper.make_html(dumper.output_filename)
+
     else:
         dumper.dump()

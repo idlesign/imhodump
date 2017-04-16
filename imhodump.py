@@ -21,7 +21,7 @@ logger.setLevel(logging.INFO)
 VERSION = (0, 5, 0)
 
 
-class ImhoDumper():
+class ImhoDumper:
 
     SUBJECT_FILMS = 'films'
     SUBJECT_BOOKS = 'books'
@@ -90,7 +90,7 @@ class ImhoDumper():
                 'details_url': details_url
             }
 
-            if self.subject == 'films':
+            if self.subject == self.SUBJECT_FILMS:
                 countries = []
 
                 for country in html_details.xpath('.//meta[@itemprop="countryOfOrigin"]') or []:
@@ -309,7 +309,7 @@ if __name__ == '__main__':
 
     parsed = args_parser.parse_args()
 
-    if parsed.subject != 'films':
+    if parsed.subject != ImhoDumper.SUBJECT_FILMS:
         logger.warning(
             'Разбор проверен 2017-04-16 для раздела Фильмы. '
             'Разбор данных из других разделов может не работать.')

@@ -17,7 +17,8 @@ logging.basicConfig()
 logger = logging.getLogger(os.path.basename(__file__))
 logger.setLevel(logging.INFO)
 
-VERSION = (0, 4, 0)
+
+VERSION = (0, 5, 0)
 
 
 class ImhoDumper():
